@@ -1,0 +1,31 @@
+{
+  "name": "wanzi-ai-art-studio",
+  "version": "1.0.0",
+  "description": "Wanzi AI Art Studio — 集成多种 AI 模型的图像与视频生成工坊，支持文生图、图生图、文生视频与图生视频",
+  "author": "Hreign Chen",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.21.0",
+    "next": "16.2.9",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^6.0.3"
+  }
+}
