@@ -69,34 +69,37 @@ export function Dialog({ open, onClose, title, children, className, size = "md" 
       {/* Dialog */}
       <div
         ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? "dialog-title" : undefined}
         className={cn(
           "relative w-full bg-[var(--color-bg-elevated)] border border-[var(--color-border-primary)]",
           "rounded-[var(--radius-lg)] shadow-[var(--shadow-xl)]",
-          "animate-in zoom-in-95 duration-200",
           sizeStyles[size],
           className,
         )}
-        style={{ animation: "slideUp 250ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+        style={{ animation: "dialogEnter 200ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
         {/* Header */}
         {title && (
           <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border-secondary)]">
-            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">{title}</h2>
+            <h2 id="dialog-title" className="text-lg font-semibold text-[var(--color-text-primary)] text-balance">{title}</h2>
             <button
               onClick={onClose}
+              aria-label="关闭对话框"
               className="p-1.5 rounded-[var(--radius-sm)] text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] hover:bg-[var(--color-bg-tertiary)] transition-colors"
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
             </button>
           </div>
         )}
 
         {/* Body */}
-        <div className="px-6 py-4">{children}</div>
+        <div className="px-6 py-4 text-pretty">{children}</div>
       </div>
 
       <style jsx>{`
-        @keyframes slideUp {
+        @keyframes dialogEnter {
           from {
             opacity: 0;
             transform: translateY(8px) scale(0.97);

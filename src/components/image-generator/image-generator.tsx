@@ -14,7 +14,9 @@ import { useImageGeneration } from "@/hooks/use-image-generation";
 import { useHistorySelection } from "@/hooks/use-history-selection";
 import type { GenerationParams, GenerationResult, ResponseFormat, ModelId } from "@/types";
 import { getModelConfig } from "@/config/models";
-import { Sparkles, AlertCircle, ImageIcon, History } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { cn } from "@/lib/utils";
+import { Sparkles, AlertCircle, ImageIcon, History, Info, Download } from "lucide-react";
 
 interface ImageGeneratorProps {
   modelId: ModelId;
@@ -55,13 +57,15 @@ export function ImageGenerator({
   const [imageUrl, setImageUrl] = useState("");
   const [imageMode, setImageMode] = useState<"none" | "url" | "upload">("none");
   const [showHistory, setShowHistory] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
+  const isSenseNova = modelId === "sensenova-u1.5-lite" || modelId === "sensenova-u1.5-fast";
+  const [watermark, setWatermark] = useState(false);
 
   const hasImg2Img = modelConfig.capabilities.includes("image-to-image");
 
   // Persist params on change
   const prevParamsRef = useRef({ modelId, size, n, responseFormat });
   useEffect(() => {
-    console.log("Persisting params for model:", modelId, "size:", size, "n:", n, "responseFormat:", responseFormat);
     const prev = prevParamsRef.current;
     if (prev.modelId !== modelId) {
       localStorage.setItem(`wanzi-ai-art-studio-params-${prev.modelId}`, JSON.stringify({ size: prev.size, n: prev.n, responseFormat: prev.responseFormat }));
@@ -79,30 +83,37 @@ export function ImageGenerator({
       n,
     };
 
-    if (modelId === "agnes-image-2.1-flash") {
-      if (imageMode === "url" && imageUrl.trim()) {
-        params.image = imageUrl.trim();
-      } else if (imageMode === "upload" && imageUrl) {
-        params.image = imageUrl;
+    const isAgnesImage = modelId === "agnes-image-2.5-flash";
+    const hasImageInput = (imageMode === "url" && imageUrl.trim()) || (imageMode === "upload" && imageUrl);
+    const imageValue = imageMode === "url" ? imageUrl.trim() : imageUrl;
+
+    if (isAgnesImage) {
+      if (hasImageInput) {
+        params.image = imageValue;
       }
       if (responseFormat) {
         const extraBody: Record<string, unknown> = { response_format: responseFormat };
-        if (imageMode === "url" && imageUrl.trim()) {
-          extraBody.image = [imageUrl.trim()];
-        } else if (imageMode === "upload" && imageUrl) {
-          extraBody.image = [imageUrl];
+        if (hasImageInput) {
+          extraBody.image = [imageValue];
         }
         params.extra_body = extraBody;
       }
+    } else if (hasImageInput) {
+      params.image = imageValue;
+      params.response_format = responseFormat;
     } else {
       params.response_format = responseFormat;
+    }
+
+    if (isSenseNova) {
+      params.extra_body = { ...(params.extra_body || {}), watermark };
     }
 
     const result = await generate(params, apiKey);
     if (result) {
       onAddHistory(result);
     }
-  }, [modelId, prompt, size, n, responseFormat, imageUrl, imageMode, generate, onAddHistory, apiKey, resetHistorySelection]);
+  }, [modelId, prompt, size, n, responseFormat, imageUrl, imageMode, generate, onAddHistory, apiKey, resetHistorySelection, isSenseNova, watermark]);
 
   const isViewingHistory = !!selectedHistoryId && displayedResult?.id === selectedHistoryId;
 
@@ -130,7 +141,7 @@ export function ImageGenerator({
       {/* Content */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left: Input Panel */}
-        <div className="flex flex-col border-r border-[var(--color-border-secondary)] bg-[var(--color-bg-secondary)] flex-1 min-w-[420px]">
+        <div className="flex flex-col border-r border-[var(--color-border-secondary)] bg-[var(--color-bg-secondary)] flex-[4] min-w-[420px]">
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             <PromptInput value={prompt} onChange={setPrompt} disabled={isGenerating} />
 
@@ -164,25 +175,6 @@ export function ImageGenerator({
                   />
                 </div>
 
-                {/* N - only for SenseNova */}
-                {modelId === "sensenova-u1-fast" && modelConfig.maxN > 1 && (
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-[var(--color-text-tertiary)]">
-                      生成数量
-                      <span className="ml-1.5 text-[var(--color-text-tertiary)]">(1-{modelConfig.maxN})</span>
-                    </label>
-                    <Select
-                      options={Array.from({ length: modelConfig.maxN }, (_, i) => ({
-                        value: String(i + 1),
-                        label: `${i + 1} 张`,
-                      }))}
-                      value={String(n)}
-                      onChange={(e) => setN(Number(e.target.value))}
-                      disabled={isGenerating}
-                    />
-                  </div>
-                )}
-
                 {/* Response Format */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-[var(--color-text-tertiary)]">返回格式</label>
@@ -196,6 +188,29 @@ export function ImageGenerator({
                     disabled={isGenerating}
                   />
                 </div>
+
+                {isSenseNova && (
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium text-[var(--color-text-tertiary)]">包含水印</label>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={watermark}
+                      onClick={() => setWatermark(!watermark)}
+                      className={cn(
+                        "relative w-9 h-5 rounded-full transition-colors",
+                        watermark ? "bg-[var(--color-accent)]" : "bg-[var(--color-bg-tertiary)]",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                          watermark && "translate-x-4",
+                        )}
+                      />
+                    </button>
+                  </div>
+                )}
               </div>
             </Card>
 
@@ -236,19 +251,41 @@ export function ImageGenerator({
         </div>
 
         {/* Right: Result */}
-        <div className="flex-1 overflow-y-auto p-6 bg-[var(--color-bg-primary)] h-[calc(100vh-56px)]">
+        <div className="flex-[3] overflow-y-auto p-6 bg-[var(--color-bg-primary)] h-[calc(100dvh-56px)] min-w-[560px]">
           {displayedResult ? (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2">
                 <Badge variant={isViewingHistory ? "default" : "success"} size="sm">
                   {isViewingHistory ? "历史记录" : "已生成"}
                 </Badge>
-                <span className="text-xs text-[var(--color-text-tertiary)]">
-                  {displayedResult.images?.length || 0} 张 · {displayedResult.params.size}
-                </span>
-              </div>
-              <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg-secondary)] border border-[var(--color-border-secondary)]">
-                <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">{displayedResult.prompt}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Info className="h-3.5 w-3.5" />}
+                  onClick={() => setShowDetail(true)}
+                >
+                  详细参数
+                </Button>
+                {displayedResult.images && displayedResult.images.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Download className="h-3.5 w-3.5" />}
+                    onClick={() => {
+                      const img = displayedResult.images![0];
+                      const src = img.url || (img.b64_json ? `data:image/png;base64,${img.b64_json}` : "");
+                      if (src) {
+                        const a = document.createElement("a");
+                        a.href = src;
+                        a.download = `ai-generated-${Date.now()}.png`;
+                        a.target = "_blank";
+                        a.click();
+                      }
+                    }}
+                  >
+                    下载图片
+                  </Button>
+                )}
               </div>
               {displayedResult.images && (
                 <ImageGrid images={displayedResult.images} prompt={displayedResult.prompt} />
@@ -268,24 +305,69 @@ export function ImageGenerator({
             />
           )}
         </div>
-        {/* History (3rd column) */}
-        {showHistory && (
-          <div className="w-[320px] min-w-[320px] border-l border-[var(--color-border-secondary)]">
-            <HistoryPanel
-              history={history}
-              onRemove={onRemoveHistory}
-              onClear={onClearHistory}
-              onSelect={selectHistory}
-              activeId={selectedHistoryId}
-            />
+      </div>
+
+      {/* History Modal */}
+      <HistoryPanel
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        history={history}
+        onRemove={onRemoveHistory}
+        onClear={onClearHistory}
+        onSelect={selectHistory}
+        activeId={selectedHistoryId}
+      />
+
+      {/* Detail Modal */}
+      <Modal
+        open={showDetail}
+        onClose={() => setShowDetail(false)}
+        title="生成详情"
+        size="lg"
+      >
+        {displayedResult && (
+          <div className="space-y-4 max-h-[70dvh] overflow-y-auto">
+            <div>
+              <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">提示词</h4>
+              <div className="max-h-[7.5rem] overflow-y-auto p-3 rounded-[var(--radius-md)] bg-[var(--color-bg-secondary)] border border-[var(--color-border-secondary)]">
+                <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+                  {displayedResult.prompt}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">模型</h4>
+                <p className="text-sm text-[var(--color-text-secondary)]">{modelConfig.name}</p>
+              </div>
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">图像尺寸</h4>
+                <p className="text-sm text-[var(--color-text-secondary)]">{displayedResult.params.size || "—"}</p>
+              </div>
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">图片数量</h4>
+                <p className="text-sm text-[var(--color-text-secondary)]">{displayedResult.images?.length || 0} 张</p>
+              </div>
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">返回格式</h4>
+                <p className="text-sm text-[var(--color-text-secondary)]">{displayedResult.params.response_format || "url"}</p>
+              </div>
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">生成时间</h4>
+                <p className="text-sm text-[var(--color-text-secondary)] tabular-nums">
+                  {new Date(displayedResult.createdAt).toLocaleString("zh-CN")}
+                </p>
+              </div>
+            </div>
           </div>
         )}
-      </div>
+      </Modal>
     </div>
   );
 }
 
 function formatSizeLabel(size: string): string {
+  if (!size.includes("x")) return size;
   const [w, h] = size.split("x");
   const ratio = Number(w) / Number(h);
   let label = `${w} × ${h}`;

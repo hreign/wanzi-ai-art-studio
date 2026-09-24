@@ -1,4 +1,8 @@
-export type ModelId = "sensenova-u1-fast" | "agnes-image-2.1-flash" | "agnes-video-v2.0";
+export type ModelId =
+  | "sensenova-u1.5-lite"
+  | "sensenova-u1.5-fast"
+  | "agnes-image-2.5-flash"
+  | "agnes-video-2.5-flash";
 export type ProviderId = "sensenova" | "agnes";
 
 export interface ModelConfig {

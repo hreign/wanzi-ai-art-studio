@@ -12,8 +12,12 @@ export class ImageGenerationError extends Error {
   }
 }
 
+function isSenseNovaEditModel(modelId: ModelId): boolean {
+  return modelId === "sensenova-u1.5-lite" || modelId === "sensenova-u1.5-fast";
+}
+
 function buildRequestBody(modelId: ModelId, params: GenerationParams): Record<string, unknown> {
-  if (modelId === "agnes-image-2.1-flash") {
+  if (modelId === "agnes-image-2.5-flash") {
     const body: Record<string, unknown> = {
       model: modelId,
       prompt: params.prompt,
@@ -26,18 +30,39 @@ function buildRequestBody(modelId: ModelId, params: GenerationParams): Record<st
       body.return_base64 = true;
     }
     if (params.extra_body && Object.keys(params.extra_body).length > 0) {
-      body.extra_body = params.extra_body;
+      const { ratio, ...rest } = params.extra_body as Record<string, unknown>;
+      if (ratio) body.ratio = ratio;
+      if (Object.keys(rest).length > 0) body.extra_body = rest;
     }
     return body;
   }
 
-  return {
+  if (isSenseNovaEditModel(modelId) && params.image) {
+    const imageVal = Array.isArray(params.image) ? params.image[0] : params.image;
+    const body: Record<string, unknown> = {
+      model: modelId,
+      images: [{ image_url: imageVal }],
+      prompt: params.prompt,
+      size: params.size || "auto",
+      response_format: params.response_format || "url",
+    };
+    if (params.extra_body && Object.keys(params.extra_body).length > 0) {
+      Object.assign(body, params.extra_body);
+    }
+    return body;
+  }
+
+  const body: Record<string, unknown> = {
     model: modelId,
     prompt: params.prompt,
     size: params.size || "1024x1024",
     n: params.n || 1,
     response_format: params.response_format || "url",
   };
+  if (params.extra_body && Object.keys(params.extra_body).length > 0) {
+    Object.assign(body, params.extra_body);
+  }
+  return body;
 }
 
 export async function generateImages(
@@ -54,13 +79,14 @@ export async function generateImages(
   }
 
   const body = buildRequestBody(modelId, params);
+  const useEdit = isSenseNovaEditModel(modelId) && !!params.image;
 
   let response: Response;
   try {
     response = await fetch("/api/generations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: modelId, body, apiKey }),
+      body: JSON.stringify({ model: modelId, body, apiKey, useEdit }),
     });
   } catch (error) {
     throw new ImageGenerationError(

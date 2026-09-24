@@ -14,7 +14,8 @@ import { useVideoGeneration } from "@/hooks/use-video-generation";
 import { useHistorySelection } from "@/hooks/use-history-selection";
 import type { GenerationParams, GenerationResult, ModelId } from "@/types";
 import { getModelConfig } from "@/config/models";
-import { Video, AlertCircle, Play, Loader2, History } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { Video, AlertCircle, Play, Loader2, History, Info } from "lucide-react";
 
 interface VideoGeneratorProps {
   modelId: ModelId;
@@ -47,6 +48,23 @@ const SIZE_OPTIONS = [
   { value: "1024x1024", label: "1024 × 1024 (1:1)" },
 ];
 
+const ASPECT_RATIO_OPTIONS = [
+  { value: "16:9", label: "16:9 横版" },
+  { value: "9:16", label: "9:16 竖版" },
+  { value: "1:1", label: "1:1 方形" },
+  { value: "4:3", label: "4:3 传统" },
+  { value: "3:4", label: "3:4 竖版" },
+  { value: "21:9", label: "21:9 超宽" },
+];
+
+const SECONDS_OPTIONS = [
+  { value: "4", label: "4 秒" },
+  { value: "5", label: "5 秒" },
+  { value: "8", label: "8 秒" },
+  { value: "10", label: "10 秒" },
+  { value: "12", label: "12 秒" },
+];
+
 export function VideoGenerator({
   modelId,
   apiKey,
@@ -56,6 +74,7 @@ export function VideoGenerator({
   onClearHistory,
 }: VideoGeneratorProps) {
   const modelConfig = getModelConfig(modelId)!;
+  const isFlashVideo = modelId === "agnes-video-2.5-flash";
   const { isGenerating, isPolling, error, currentResult, videoStatus, progress, generate, clearError } = useVideoGeneration(modelId);
   const { displayedResult, selectedHistoryId, select: selectHistory, reset: resetHistorySelection } = useHistorySelection(history, currentResult);
   const lastAddedId = useRef<string | null>(null);
@@ -65,6 +84,7 @@ export function VideoGenerator({
   const [imageMode, setImageMode] = useState<"none" | "url" | "upload">("none");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
 
   function loadVideoParams(mid: ModelId) {
     try {
@@ -78,36 +98,41 @@ export function VideoGenerator({
   const [size, setSize] = useState(_vinitial.size || "1152x768");
   const [frameCount, setFrameCount] = useState(_vinitial.frameCount || "121");
   const [frameRate, setFrameRate] = useState(_vinitial.frameRate || "24");
+  const [aspectRatio, setAspectRatio] = useState(_vinitial.aspectRatio || "16:9");
+  const [seconds, setSeconds] = useState(_vinitial.seconds || "5");
   const [seed, setSeed] = useState(_vinitial.seed || "");
   const [negativePrompt, setNegativePrompt] = useState(_vinitial.negativePrompt || "");
 
   // Persist params on change (also saves prev model's params on model switch)
-  const prevVParamsRef = useRef({ modelId, size, frameCount, frameRate, seed, negativePrompt });
+  const prevVParamsRef = useRef({ modelId, size, frameCount, frameRate, aspectRatio, seconds, seed, negativePrompt });
   useEffect(() => {
     const prev = prevVParamsRef.current;
     if (prev.modelId !== modelId) {
       localStorage.setItem(`wanzi-ai-art-studio-params-${prev.modelId}`, JSON.stringify({
         size: prev.size, frameCount: prev.frameCount, frameRate: prev.frameRate,
+        aspectRatio: prev.aspectRatio, seconds: prev.seconds,
         seed: prev.seed, negativePrompt: prev.negativePrompt,
       }));
     }
-    prevVParamsRef.current = { modelId, size, frameCount, frameRate, seed, negativePrompt };
-    localStorage.setItem(`wanzi-ai-art-studio-params-${modelId}`, JSON.stringify({ size, frameCount, frameRate, seed, negativePrompt }));
-  }, [modelId, size, frameCount, frameRate, seed, negativePrompt]);
+    prevVParamsRef.current = { modelId, size, frameCount, frameRate, aspectRatio, seconds, seed, negativePrompt };
+    localStorage.setItem(`wanzi-ai-art-studio-params-${modelId}`, JSON.stringify({ size, frameCount, frameRate, aspectRatio, seconds, seed, negativePrompt }));
+  }, [modelId, size, frameCount, frameRate, aspectRatio, seconds, seed, negativePrompt]);
 
   const [width, height] = size.split("x").map(Number);
 
   const handleGenerate = useCallback(async () => {
     resetHistorySelection();
 
-    const params: GenerationParams = {
-      model: modelId,
-      prompt,
-      width,
-      height,
-      num_frames: Number(frameCount),
-      frame_rate: Number(frameRate),
-    };
+    const params: GenerationParams = { model: modelId, prompt };
+
+    if (isFlashVideo) {
+      params.extra_body = { mode: "text", seconds, aspect_ratio: aspectRatio };
+    } else {
+      params.width = width;
+      params.height = height;
+      params.num_frames = Number(frameCount);
+      params.frame_rate = Number(frameRate);
+    }
 
     if (imageMode === "url" && imageUrl.trim()) {
       params.image = imageUrl.trim();
@@ -128,7 +153,7 @@ export function VideoGenerator({
       lastAddedId.current = result.id;
       onAddHistory(result);
     }
-  }, [modelId, prompt, imageUrl, imageMode, width, height, frameCount, frameRate, seed, negativePrompt, generate, apiKey, onAddHistory, resetHistorySelection]);
+  }, [modelId, prompt, imageUrl, imageMode, width, height, frameCount, frameRate, aspectRatio, seconds, seed, negativePrompt, isFlashVideo, generate, apiKey, onAddHistory, resetHistorySelection]);
 
   const isBusy = isGenerating || isPolling;
 
@@ -167,7 +192,7 @@ export function VideoGenerator({
       {/* Content */}
       <div className="flex-1 overflow-hidden flex">
         {/* Left: Input Panel */}
-        <div className="flex flex-col border-r border-[var(--color-border-secondary)] bg-[var(--color-bg-secondary)] flex-1 min-w-[420px]">
+        <div className="flex flex-col border-r border-[var(--color-border-secondary)] bg-[var(--color-bg-secondary)] flex-[4] min-w-[420px]">
           <div className="flex-1 overflow-y-auto p-5 space-y-5">
             <PromptInput
               value={prompt}
@@ -195,42 +220,75 @@ export function VideoGenerator({
                 <h3 className="text-sm font-medium text-[var(--color-text-secondary)]">视频参数</h3>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-[var(--color-text-tertiary)]">画面尺寸</label>
-                    <Select
-                      options={SIZE_OPTIONS}
-                      value={size}
-                      onChange={(e) => setSize(e.target.value)}
-                      disabled={isBusy}
-                    />
-                  </div>
+                  {isFlashVideo ? (
+                    <>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">画面尺寸</label>
+                        <div className="h-9 flex items-center px-3 text-sm text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)] rounded-[var(--radius-sm)] border border-[var(--color-border-primary)]">
+                          720P
+                        </div>
+                      </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-[var(--color-text-tertiary)]">帧数 / 时长</label>
-                    <Select
-                      options={FRAME_OPTIONS}
-                      value={frameCount}
-                      onChange={(e) => setFrameCount(e.target.value)}
-                      disabled={isBusy}
-                    />
-                  </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">宽高比</label>
+                        <Select
+                          options={ASPECT_RATIO_OPTIONS}
+                          value={aspectRatio}
+                          onChange={(e) => setAspectRatio(e.target.value)}
+                          disabled={isBusy}
+                        />
+                      </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-[var(--color-text-tertiary)]">帧率</label>
-                    <Select
-                      options={FRAME_RATE_OPTIONS}
-                      value={frameRate}
-                      onChange={(e) => setFrameRate(e.target.value)}
-                      disabled={isBusy}
-                    />
-                  </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">视频时长</label>
+                        <Select
+                          options={SECONDS_OPTIONS}
+                          value={seconds}
+                          onChange={(e) => setSeconds(e.target.value)}
+                          disabled={isBusy}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">画面尺寸</label>
+                        <Select
+                          options={SIZE_OPTIONS}
+                          value={size}
+                          onChange={(e) => setSize(e.target.value)}
+                          disabled={isBusy}
+                        />
+                      </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-[var(--color-text-tertiary)]">预估时长</label>
-                    <div className="h-9 flex items-center px-3 text-sm text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)] rounded-[var(--radius-sm)] border border-[var(--color-border-primary)]">
-                      {Math.round(Number(frameCount) / Number(frameRate) * 10) / 10} 秒
-                    </div>
-                  </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">帧数 / 时长</label>
+                        <Select
+                          options={FRAME_OPTIONS}
+                          value={frameCount}
+                          onChange={(e) => setFrameCount(e.target.value)}
+                          disabled={isBusy}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">帧率</label>
+                        <Select
+                          options={FRAME_RATE_OPTIONS}
+                          value={frameRate}
+                          onChange={(e) => setFrameRate(e.target.value)}
+                          disabled={isBusy}
+                        />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs font-medium text-[var(--color-text-tertiary)]">预估时长</label>
+                        <div className="h-9 flex items-center px-3 text-sm text-[var(--color-text-secondary)] bg-[var(--color-bg-tertiary)] rounded-[var(--radius-sm)] border border-[var(--color-border-primary)]">
+                          {Math.round(Number(frameCount) / Number(frameRate) * 10) / 10} 秒
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <button
@@ -317,22 +375,21 @@ export function VideoGenerator({
         </div>
 
         {/* Right: Result */}
-        <div className="flex-1 overflow-y-auto p-6 bg-[var(--color-bg-primary)]">
+        <div className="flex-[3] overflow-y-auto p-6 bg-[var(--color-bg-primary)] min-w-[560px]">
           {showResult ? (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Badge variant={isViewingHistory ? "default" : "success"} size="sm">
                   {isViewingHistory ? "历史记录" : "生成完成"}
                 </Badge>
-                <span className="text-xs text-[var(--color-text-tertiary)]">
-                  {displayedResult.params.size}
-                </span>
-                <span className="text-xs text-[var(--color-text-tertiary)]">
-                  {displayedResult.params.num_frames}帧 · {displayedResult.params.frame_rate}fps
-                </span>
-              </div>
-              <div className="p-3 rounded-[var(--radius-md)] bg-[var(--color-bg-secondary)] border border-[var(--color-border-secondary)]">
-                <p className="text-sm text-[var(--color-text-secondary)]">{displayedResult.prompt}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Info className="h-3.5 w-3.5" />}
+                  onClick={() => setShowDetail(true)}
+                >
+                  详细参数
+                </Button>
               </div>
               <div className="rounded-[var(--radius-md)] overflow-hidden bg-black aspect-video flex items-center justify-center">
                 <video
@@ -358,19 +415,84 @@ export function VideoGenerator({
             />
           )}
         </div>
-        {/* History (3rd column) */}
-        {showHistory && (
-          <div className="w-[320px] min-w-[320px] border-l border-[var(--color-border-secondary)]">
-            <HistoryPanel
-              history={history}
-              onRemove={onRemoveHistory}
-              onClear={onClearHistory}
-              onSelect={selectHistory}
-              activeId={selectedHistoryId}
-            />
+      </div>
+
+      {/* History Modal */}
+      <HistoryPanel
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        history={history}
+        onRemove={onRemoveHistory}
+        onClear={onClearHistory}
+        onSelect={selectHistory}
+        activeId={selectedHistoryId}
+      />
+
+      {/* Detail Modal */}
+      <Modal
+        open={showDetail}
+        onClose={() => setShowDetail(false)}
+        title="生成详情"
+        size="lg"
+      >
+        {displayedResult && (
+          <div className="space-y-4 max-h-[70dvh] overflow-y-auto">
+            <div>
+              <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">提示词</h4>
+              <div className="max-h-[7.5rem] overflow-y-auto p-3 rounded-[var(--radius-md)] bg-[var(--color-bg-secondary)] border border-[var(--color-border-secondary)]">
+                <p className="text-sm text-[var(--color-text-secondary)] leading-relaxed">
+                  {displayedResult.prompt}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">模型</h4>
+                <p className="text-sm text-[var(--color-text-secondary)]">{modelConfig.name}</p>
+              </div>
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">画面尺寸</h4>
+                <p className="text-sm text-[var(--color-text-secondary)]">
+                  {isFlashVideo ? "720P" : (displayedResult.params.size || "—")}
+                </p>
+              </div>
+              {isFlashVideo ? (
+                <>
+                  <div>
+                    <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">宽高比</h4>
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      {String((displayedResult.params.extra_body as Record<string, unknown>)?.aspect_ratio || "16:9")}
+                    </p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">视频时长</h4>
+                    <p className="text-sm text-[var(--color-text-secondary)]">
+                      {String((displayedResult.params.extra_body as Record<string, unknown>)?.seconds || "5")} 秒
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">帧数</h4>
+                    <p className="text-sm text-[var(--color-text-secondary)]">{displayedResult.params.num_frames || "—"} 帧</p>
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">帧率</h4>
+                    <p className="text-sm text-[var(--color-text-secondary)]">{displayedResult.params.frame_rate || "—"} fps</p>
+                  </div>
+                </>
+              )}
+              <div>
+                <h4 className="text-xs font-medium text-[var(--color-text-tertiary)] mb-1">生成时间</h4>
+                <p className="text-sm text-[var(--color-text-secondary)] tabular-nums">
+                  {new Date(displayedResult.createdAt).toLocaleString("zh-CN")}
+                </p>
+              </div>
+            </div>
           </div>
         )}
-      </div>
+      </Modal>
     </div>
   );
 }

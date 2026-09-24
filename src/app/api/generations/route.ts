@@ -1,25 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MODEL_ENDPOINTS, VIDEO_POLL_ENDPOINT } from "@/config/models";
+import { MODEL_ENDPOINTS, VIDEO_POLL_ENDPOINT, IMAGE_EDIT_ENDPOINTS } from "@/config/models";
 
 export const runtime = "nodejs";
 
 const MAX_BODY_SIZE = 10 * 1024 * 1024;
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  let bodyData: { model?: string; body?: unknown; apiKey?: string };
+  let bodyData: { model?: string; body?: unknown; apiKey?: string; useEdit?: boolean };
   try {
     bodyData = await request.json();
   } catch {
     return NextResponse.json({ error: "请求体格式无效" }, { status: 400 });
   }
 
-  const { model, body: originalBody, apiKey } = bodyData;
+  const { model, body: originalBody, apiKey, useEdit } = bodyData;
 
   if (!model) {
     return NextResponse.json({ error: "缺少模型名称参数: model" }, { status: 400 });
   }
 
-  const endpoint = MODEL_ENDPOINTS[model];
+  let endpoint: string | undefined;
+  if (useEdit) {
+    endpoint = IMAGE_EDIT_ENDPOINTS[model];
+  }
+  if (!endpoint) {
+    endpoint = MODEL_ENDPOINTS[model];
+  }
   if (!endpoint) {
     return NextResponse.json({ error: `不支持的模型: ${model}` }, { status: 400 });
   }
@@ -80,6 +86,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const model = searchParams.get("model");
   const videoId = searchParams.get("video_id");
   const apiKey = searchParams.get("apiKey");
+  const modelName = searchParams.get("model_name");
 
   if (!model || !videoId) {
     return NextResponse.json({ error: "缺少参数: model, video_id" }, { status: 400 });
@@ -91,6 +98,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const pollUrl = new URL(VIDEO_POLL_ENDPOINT);
   pollUrl.searchParams.set("video_id", videoId);
+  if (modelName) {
+    pollUrl.searchParams.set("model_name", modelName);
+  }
 
   const headers: Record<string, string> = {};
   if (apiKey) {

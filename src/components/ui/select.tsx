@@ -32,7 +32,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             </option>
           ))}
         </select>
-        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-text-tertiary)] pointer-events-none" />
+        <ChevronDown aria-hidden className="absolute right-2.5 top-1/2 -translate-y-1/2 size-3.5 text-[var(--color-text-tertiary)] pointer-events-none" />
       </div>
     );
   },

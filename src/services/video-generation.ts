@@ -38,27 +38,20 @@ export async function createVideoTask(
     throw new VideoGenerationError("请输入提示词", undefined, "EMPTY_PROMPT");
   }
 
+  const extra = (params.extra_body || {}) as Record<string, unknown>;
   const body: Record<string, unknown> = {
     model: modelId,
     prompt: params.prompt,
-    height: params.height || 768,
-    width: params.width || 1152,
-    num_frames: params.num_frames || 121,
-    frame_rate: params.frame_rate || 24,
+    mode: extra.mode || "text",
+    size: "720P",
+    seconds: extra.seconds || "5",
+    aspect_ratio: extra.aspect_ratio || "16:9",
+    n: 1,
   };
-
   if (params.image) {
-    body.image = Array.isArray(params.image) ? params.image : [params.image];
+    body.mode = "reference";
+    body.images = Array.isArray(params.image) ? params.image : [params.image];
   }
-
-  if (params.extra_body) {
-    body.extra_body = params.extra_body;
-  }
-
-  if (params.negative_prompt) {
-    body.negative_prompt = params.negative_prompt;
-  }
-
   if (params.seed !== undefined) {
     body.seed = params.seed;
   }
@@ -105,6 +98,7 @@ export async function pollVideoResult(
   apiKey: string,
 ): Promise<VideoTaskResponse> {
   const params = new URLSearchParams({ model: modelId, video_id: videoId, apiKey });
+  params.set("model_name", modelId);
 
   let response: Response;
   try {
